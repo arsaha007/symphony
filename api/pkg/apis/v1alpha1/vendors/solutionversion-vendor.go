@@ -10,6 +10,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/eclipse-symphony/symphony/api/constants"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/solutionversion"
@@ -60,7 +62,7 @@ func (o *SolutionVersionVendor) GetEndpoints() []v1alpha2.Endpoint {
 	if o.Route != "" {
 		route = o.Route
 	}
-	return []v1alpha2.Endpoint{
+	endpoints := []v1alpha2.Endpoint{
 		{
 			Methods: []string{fasthttp.MethodPost, fasthttp.MethodGet, fasthttp.MethodDelete},
 			Route:   route + "/instances", //this route is to support ITargetProvider interface via a proxy provider
@@ -80,7 +82,99 @@ func (o *SolutionVersionVendor) GetEndpoints() []v1alpha2.Endpoint {
 			Version: o.Version,
 			Handler: o.onQueue,
 		},
+		{
+			Methods: []string{fasthttp.MethodGet},
+			Route:   route + "/tasks",
+			Version: o.Version,
+			Handler: o.onGetRemoteTasks,
+		},
+		{
+			Methods: []string{fasthttp.MethodPost},
+			Route:   route + "/task/getResult",
+			Version: o.Version,
+			Handler: o.onRemoteTaskResult,
+		},
 	}
+	if route != "solution" {
+		endpoints = append(endpoints,
+			v1alpha2.Endpoint{
+				Methods: []string{fasthttp.MethodGet},
+				Route:   "solution/tasks",
+				Version: o.Version,
+				Handler: o.onGetRemoteTasks,
+			},
+			v1alpha2.Endpoint{
+				Methods: []string{fasthttp.MethodPost},
+				Route:   "solution/task/getResult",
+				Version: o.Version,
+				Handler: o.onRemoteTaskResult,
+			},
+		)
+	}
+	return endpoints
+}
+
+func (c *SolutionVersionVendor) onGetRemoteTasks(request v1alpha2.COARequest) v1alpha2.COAResponse {
+	ctx, span := observability.StartSpan("SolutionVersion Vendor", request.Context, &map[string]string{"method": "onGetRemoteTasks"})
+	defer span.End()
+	target := request.Parameters["target"]
+	if target == "" {
+		return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+			State: v1alpha2.BadRequest, Body: []byte("target is required"), ContentType: "text/plain",
+		})
+	}
+	namespace := request.Parameters["namespace"]
+	if namespace == "" {
+		namespace = constants.DefaultScope
+	}
+	getAll := strings.EqualFold(request.Parameters["getAll"], "true")
+	size := 1
+	if getAll {
+		size = 10
+	}
+	if configured, err := strconv.Atoi(request.Parameters["size"]); err == nil && configured > 0 {
+		size = configured
+	}
+	page, err := c.SolutionVersionManager.GetRemoteTasks(ctx, target, namespace, getAll, request.Parameters["preindex"], size)
+	if err != nil {
+		return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+			State: v1alpha2.GetErrorState(err), Body: []byte(err.Error()), ContentType: "text/plain",
+		})
+	}
+	body, err := json.Marshal(page)
+	if err != nil {
+		return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+			State: v1alpha2.SerializationError, Body: []byte(err.Error()), ContentType: "text/plain",
+		})
+	}
+	return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+		State: v1alpha2.OK, Body: body, ContentType: "application/json",
+	})
+}
+
+func (c *SolutionVersionVendor) onRemoteTaskResult(request v1alpha2.COARequest) v1alpha2.COAResponse {
+	ctx, span := observability.StartSpan("SolutionVersion Vendor", request.Context, &map[string]string{"method": "onRemoteTaskResult"})
+	defer span.End()
+	result, err := model.DecodeAsyncResult(request.Body)
+	if err != nil {
+		return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+			State: v1alpha2.DeserializeError, Body: []byte(err.Error()), ContentType: "text/plain",
+		})
+	}
+	if result.Namespace == "" {
+		result.Namespace = request.Parameters["namespace"]
+	}
+	if result.Namespace == "" {
+		result.Namespace = constants.DefaultScope
+	}
+	if err := c.SolutionVersionManager.HandleRemoteAgentExecuteResultForTarget(ctx, result, request.Parameters["target"]); err != nil {
+		return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+			State: v1alpha2.GetErrorState(err), Body: []byte(err.Error()), ContentType: "text/plain",
+		})
+	}
+	return observ_utils.CloseSpanWithCOAResponse(span, v1alpha2.COAResponse{
+		State: v1alpha2.Accepted, Body: []byte(`{"result":"accepted"}`), ContentType: "application/json",
+	})
 }
 func (c *SolutionVersionVendor) onQueue(request v1alpha2.COARequest) v1alpha2.COAResponse {
 	rContext, span := observability.StartSpan("SolutionVersion Vendor", request.Context, &map[string]string{

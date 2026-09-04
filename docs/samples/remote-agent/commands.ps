@@ -1,0 +1,8 @@
+$sshPublicKey = (Get-Content "$HOME\.ssh\id_rsa.pub" -Raw).Trim()
+
+az deployment group create `
+  --resource-group "arijt" `
+  --name "DeployRemoteAgentInfra" `
+  --template-file ".\docs\samples\remote-agent\azuredeploy.yaml" `
+  --parameters sshPublicKey="$sshPublicKey" `
+  --confirm-with-what-if

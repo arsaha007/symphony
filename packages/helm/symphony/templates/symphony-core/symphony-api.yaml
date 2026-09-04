@@ -85,6 +85,14 @@ spec:
         - mountPath: {{ include "symphony.apiServingCertsDir" . }}
           name: serving-cert
           readOnly: true
+        {{- if .Values.remoteAgent.enabled }}
+        - mountPath: /etc/symphony-api/remote-agent-ca
+          name: remote-agent-ca
+          readOnly: true
+        - mountPath: /etc/symphony-api/remote-agent-bootstrap-ca
+          name: remote-agent-bootstrap-ca
+          readOnly: true
+        {{- end }}
         {{- if and .Values.Azure.proxySettings.isProxyEnabled .Values.Azure.proxySettings.proxyCert }}
         - name: ssl-certs
           mountPath: /etc/pki/ca-trust/extracted/
@@ -145,6 +153,20 @@ spec:
         - name: serving-cert
           secret:
             secretName: {{ include "symphony.apiServingCertName" . }}
+        {{- if .Values.remoteAgent.enabled }}
+        - name: remote-agent-ca
+          secret:
+            secretName: {{ include "symphony.fullname" . }}-remote-agent-ca
+            items:
+            - key: tls.crt
+              path: ca.crt
+        - name: remote-agent-bootstrap-ca
+          secret:
+            secretName: {{ default (printf "%s-remote-agent-ca" (include "symphony.fullname" .)) .Values.remoteAgent.bootstrapCA.secretName }}
+            items:
+            - key: {{ .Values.remoteAgent.bootstrapCA.secretKey }}
+              path: ca.crt
+        {{- end }}
         {{- if and .Values.Azure.proxySettings.isProxyEnabled .Values.Azure.proxySettings.proxyCert }}
         - name: proxy-certstore
           secret:

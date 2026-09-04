@@ -8,8 +8,11 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -38,10 +41,12 @@ type CertProviderConfig struct {
 
 // HttpBindingConfig configures a HttpBinding.
 type HttpBindingConfig struct {
-	Port         int                `json:"port"`
-	Pipeline     []MiddlewareConfig `json:"pipeline"`
-	TLS          bool               `json:"tls"`
-	CertProvider CertProviderConfig `json:"certProvider"`
+	Port                  int                `json:"port"`
+	Pipeline              []MiddlewareConfig `json:"pipeline"`
+	TLS                   bool               `json:"tls"`
+	CertProvider          CertProviderConfig `json:"certProvider"`
+	ClientCAFile          string             `json:"clientCAFile,omitempty"`
+	BootstrapClientCAFile string             `json:"bootstrapClientCAFile,omitempty"`
 }
 
 // HttpBinding provides service endpoints as a fasthttp web server
@@ -80,8 +85,34 @@ func (h *HttpBinding) Launch(config HttpBindingConfig, endpoints []v1alpha2.Endp
 		}
 	}
 
-	h.server = &fasthttp.Server{
-		Handler: h.pipeline.Apply(handler),
+	h.server = &fasthttp.Server{Handler: h.pipeline.Apply(handler)}
+	clientCAFile := config.ClientCAFile
+	if clientCAFile == "" {
+		clientCAFile = os.Getenv("CLIENT_CA_FILE")
+	}
+	if config.TLS && clientCAFile != "" {
+		clientCAs, err := loadClientCAPool(clientCAFile)
+		if err != nil {
+			return err
+		}
+		bootstrapCAFile := config.BootstrapClientCAFile
+		if bootstrapCAFile == "" {
+			bootstrapCAFile = os.Getenv("CLIENT_BOOTSTRAP_CA_FILE")
+		}
+		if bootstrapCAFile != "" && bootstrapCAFile != clientCAFile {
+			bootstrapCA, err := os.ReadFile(bootstrapCAFile)
+			if err != nil {
+				return v1alpha2.NewCOAError(err, fmt.Sprintf("failed to read bootstrap client CA file %s", bootstrapCAFile), v1alpha2.BadConfig)
+			}
+			if !clientCAs.AppendCertsFromPEM(bootstrapCA) {
+				return v1alpha2.NewCOAError(nil, fmt.Sprintf("failed to parse bootstrap client CA file %s", bootstrapCAFile), v1alpha2.BadConfig)
+			}
+		}
+		h.server.TLSConfig = &tls.Config{
+			ClientAuth: tls.RequestClientCert,
+			ClientCAs:  clientCAs,
+			MinVersion: tls.VersionTLS12,
+		}
 	}
 
 	go func() {
@@ -137,7 +168,26 @@ func (h *HttpBinding) getRouter(endpoints []v1alpha2.Endpoint) *routing.Router {
 			router.Handle(m, path, wrapAsHTTPHandler(e, e.Handler))
 		}
 	}
+	fileServer := (&fasthttp.FS{
+		Root:               "/",
+		IndexNames:         []string{"index.html"},
+		GenerateIndexPages: false,
+		Compress:           true,
+	}).NewRequestHandler()
+	router.Handle(fasthttp.MethodGet, "/v1alpha2/files/{filepath:*}", fileServer)
 	return router
+}
+
+func loadClientCAPool(path string) (*x509.CertPool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, v1alpha2.NewCOAError(err, fmt.Sprintf("failed to read client CA file %s", path), v1alpha2.BadConfig)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, v1alpha2.NewCOAError(nil, fmt.Sprintf("failed to parse client CA file %s", path), v1alpha2.BadConfig)
+	}
+	return pool, nil
 }
 
 func composeCOARequestContext(reqCtx *fasthttp.RequestCtx, actCtx *contexts.ActivityLogContext, diagCtx *contexts.DiagnosticLogContext) context.Context {

@@ -1,0 +1,43 @@
+{{- if .Values.remoteAgent.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "symphony.fullname" . }}-remote-agent-ca
+  namespace: {{ .Release.Namespace }}
+spec:
+  isCA: true
+  commonName: {{ include "symphony.fullname" . }}-remote-agent-ca
+  secretName: {{ include "symphony.fullname" . }}-remote-agent-ca
+  duration: {{ .Values.remoteAgent.workingCertDuration | quote }}
+  renewBefore: {{ .Values.remoteAgent.workingCertRenewBefore | quote }}
+  issuerRef:
+    name: {{ include "symphony.apiServingCertIssuerName" . }}
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "symphony.fullname" . }}-remote-agent-issuer
+  namespace: {{ .Release.Namespace }}
+spec:
+  ca:
+    secretName: {{ include "symphony.fullname" . }}-remote-agent-ca
+{{- if .Values.remoteAgent.bootstrapCertificate.enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "symphony.fullname" . }}-remote-agent-bootstrap
+  namespace: {{ .Release.Namespace }}
+spec:
+  commonName: {{ .Values.remoteAgent.bootstrapCertificate.commonName | quote }}
+  secretName: {{ include "symphony.fullname" . }}-remote-agent-bootstrap
+  duration: {{ .Values.remoteAgent.workingCertDuration | quote }}
+  renewBefore: {{ .Values.remoteAgent.workingCertRenewBefore | quote }}
+  usages:
+  - client auth
+  issuerRef:
+    name: {{ include "symphony.fullname" . }}-remote-agent-issuer
+    kind: Issuer
+{{- end }}
+{{- end }}

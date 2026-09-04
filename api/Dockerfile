@@ -25,6 +25,8 @@ RUN mkdir /workspace /extensions
 COPY ./packages /workspace/packages
 COPY ./coa /workspace/coa
 COPY ./api /workspace/api
+COPY ./remote-agent /workspace/remote-agent
+COPY ./.github/version /workspace/.github/version
 WORKDIR /workspace/api
 # File permissions are not preserved when copying files in ADO. 
 RUN chmod +x pkg/apis/v1alpha1/providers/target/script/mock-*.sh
@@ -93,6 +95,11 @@ RUN if [ "$FAULT_INJECTION_ENABLED" = "true" ]; then \
     cd /workspace/api && go get go.etcd.io/gofail/runtime; \
 fi
 
+WORKDIR /workspace/remote-agent
+RUN AGENT_VERSION=$(cat /workspace/.github/version/versions.txt) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags remote -ldflags "-X main.agentVersion=${AGENT_VERSION}" -o /remote-agent/remote-agent .
+RUN AGENT_VERSION=$(cat /workspace/.github/version/versions.txt) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags remote -ldflags "-X main.agentVersion=${AGENT_VERSION}" -o /remote-agent/remote-agent.exe .
+
+WORKDIR /workspace/api
 RUN if [ "$TARGETARCH" = "arm" ]; then \
     CC=arm-linux-gnueabihf-gcc \
     RUSTFLAGS="-C linker=arm-linux-gnueabihf-gcc" \
@@ -127,6 +134,7 @@ ADD https://github.com/golang/go/raw/master/lib/time/zoneinfo.zip /zoneinfo.zip
 ENV ZONEINFO=/zoneinfo.zip
 COPY --from=build /dist /
 COPY --from=build /extensions /extensions
+COPY --from=build /remote-agent /v1alpha2/files
 ADD ./api/symphony-api.json /
 ADD ./api/symphony-api-no-k8s.json /
 # --- in the RUNTIME stage, after copying /extensions ---

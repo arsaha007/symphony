@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2"
@@ -44,12 +45,17 @@ type MQTTBindingConfig struct {
 }
 
 type MQTTBinding struct {
-	MQTTClient gmqtt.Client
+	MQTTClient      gmqtt.Client
+	subscribedTopic map[string]struct{}
+	lock            sync.RWMutex
+	config          MQTTBindingConfig
 }
 
 var routeTable map[string]v1alpha2.Endpoint
 
 func (m *MQTTBinding) Launch(config MQTTBindingConfig, endpoints []v1alpha2.Endpoint) error {
+	m.config = config
+	m.subscribedTopic = make(map[string]struct{})
 	routeTable = make(map[string]v1alpha2.Endpoint)
 	for _, endpoint := range endpoints {
 		route := endpoint.Route
@@ -103,7 +109,7 @@ func (m *MQTTBinding) Launch(config MQTTBindingConfig, endpoints []v1alpha2.Endp
 	if token := m.MQTTClient.Connect(); token.Wait() && token.Error() != nil {
 		connErr := token.Error()
 		log.Errorf("MQTT Binding: failed to connect to MQTT broker - %+v", connErr)
-		
+
 		// Provide specific guidance for common TLS errors
 		if strings.Contains(connErr.Error(), "certificate signed by unknown authority") {
 			log.Errorf("MQTT Binding: TLS certificate verification failed. Common solutionversions:")
@@ -116,7 +122,7 @@ func (m *MQTTBinding) Launch(config MQTTBindingConfig, endpoints []v1alpha2.Endp
 			log.Errorf("MQTT Binding: - Verify CA certificate path and format")
 			log.Errorf("MQTT Binding: - Check client certificate and key paths if using mutual TLS")
 		}
-		
+
 		return v1alpha2.NewCOAError(connErr, "failed to connect to MQTT broker", v1alpha2.InternalError)
 	}
 
@@ -156,18 +162,13 @@ func (m *MQTTBinding) Launch(config MQTTBindingConfig, endpoints []v1alpha2.Endp
 				}
 				response.Metadata["request-id"] = v
 			}
-			if v, ok := request.Metadata["request-id"]; ok {
-				if response.Metadata == nil {
-					response.Metadata = make(map[string]string)
-				}
-				response.Metadata["request-id"] = v
-			}
 		}
 
 		data, _ := json.Marshal(response)
+		responseTopic := m.responseTopicFor(msg.Topic())
 
 		go func() {
-			if token := client.Publish(config.ResponseTopic, 0, false, data); token.Wait() && token.Error() != nil {
+			if token := client.Publish(responseTopic, 0, false, data); token.Wait() && token.Error() != nil {
 				log.Errorf("failed to handle request from MOTT: %s", token.Error())
 			}
 		}()
@@ -177,14 +178,70 @@ func (m *MQTTBinding) Launch(config MQTTBindingConfig, endpoints []v1alpha2.Endp
 			return v1alpha2.NewCOAError(token.Error(), "failed to subscribe to request topic", v1alpha2.InternalError)
 		}
 	}
+	m.subscribedTopic[config.RequestTopic] = struct{}{}
 
+	return nil
+}
+
+func (m *MQTTBinding) responseTopicFor(requestTopic string) string {
+	if strings.HasPrefix(requestTopic, "symphony/request/") {
+		return "symphony/response/" + strings.TrimPrefix(requestTopic, "symphony/request/")
+	}
+	return m.config.ResponseTopic
+}
+
+func (m *MQTTBinding) SubscribeTopic(topic string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if _, ok := m.subscribedTopic[topic]; ok {
+		return nil
+	}
+	token := m.MQTTClient.Subscribe(topic, 0, func(client gmqtt.Client, message gmqtt.Message) {
+		var request v1alpha2.COARequest
+		if err := json.Unmarshal(message.Payload(), &request); err != nil {
+			return
+		}
+		response, ok := routeTable[request.Route]
+		if !ok {
+			return
+		}
+		result := response.Handler(request)
+		if requestID := request.Metadata["request-id"]; requestID != "" {
+			if result.Metadata == nil {
+				result.Metadata = make(map[string]string)
+			}
+			result.Metadata["request-id"] = requestID
+		}
+		data, _ := json.Marshal(result)
+		client.Publish(m.responseTopicFor(message.Topic()), 0, false, data)
+	})
+	token.Wait()
+	if err := token.Error(); err != nil {
+		return err
+	}
+	m.subscribedTopic[topic] = struct{}{}
+	return nil
+}
+
+func (m *MQTTBinding) UnsubscribeTopic(topic string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if _, ok := m.subscribedTopic[topic]; !ok {
+		return nil
+	}
+	token := m.MQTTClient.Unsubscribe(topic)
+	token.Wait()
+	if err := token.Error(); err != nil {
+		return err
+	}
+	delete(m.subscribedTopic, topic)
 	return nil
 }
 
 // createTLSConfig creates a TLS configuration for MQTT client authentication
 func (m *MQTTBinding) createTLSConfig(config MQTTBindingConfig) (*tls.Config, error) {
 	insecureSkipVerify := config.InsecureSkipVerify == "true"
-	
+
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: insecureSkipVerify,
 	}
@@ -248,11 +305,11 @@ func (m *MQTTBinding) createTLSConfig(config MQTTBindingConfig) (*tls.Config, er
 func isCertificatePEM(data []byte) bool {
 	// Check if the data contains PEM headers
 	dataStr := string(data)
-	if !strings.Contains(dataStr, "-----BEGIN CERTIFICATE-----") || 
-	   !strings.Contains(dataStr, "-----END CERTIFICATE-----") {
+	if !strings.Contains(dataStr, "-----BEGIN CERTIFICATE-----") ||
+		!strings.Contains(dataStr, "-----END CERTIFICATE-----") {
 		return false
 	}
-	
+
 	// Try to decode the PEM block
 	block, _ := pem.Decode(data)
 	return block != nil && block.Type == "CERTIFICATE"

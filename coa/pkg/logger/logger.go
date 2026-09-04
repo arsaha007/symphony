@@ -123,6 +123,18 @@ type Logger interface {
 	Fatalf(format string, args ...interface{})
 }
 
+type remoteLogCollector interface {
+	CollectLogs() []string
+}
+
+func CollectRemoteLogs(log Logger) []string {
+	collector, ok := log.(remoteLogCollector)
+	if !ok {
+		return nil
+	}
+	return collector.CollectLogs()
+}
+
 // toLogLevel converts to LogLevel
 func toLogLevel(level string) LogLevel {
 	switch strings.ToLower(level) {
@@ -140,20 +152,6 @@ func toLogLevel(level string) LogLevel {
 
 	// unsupported log level by Coa
 	return UndefinedLevel
-}
-
-// NewLogger creates new Logger instance.
-func NewLogger(name string) Logger {
-	globalLoggersLock.Lock()
-	defer globalLoggersLock.Unlock()
-
-	logger, ok := globalLoggers[name]
-	if !ok {
-		logger = newCoaLogger(name, hooks.ContextHookOptions{DiagnosticLogContextEnabled: true, ActivityLogContextEnabled: false, Folding: true})
-		globalLoggers[name] = logger
-	}
-
-	return logger
 }
 
 func getLoggers() map[string]Logger {

@@ -10,13 +10,29 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"testing"
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/valyala/fasthttp"
 )
+
+func TestAuthorizeWorkingRemoteAgentForTarget(t *testing.T) {
+	certificate := &x509.Certificate{Subject: pkix.Name{CommonName: "default-edge-01.symphony-service"}}
+	request := &fasthttp.RequestCtx{}
+	request.Request.SetRequestURI("https://localhost/v1alpha2/solutionversion/tasks?target=edge-01&namespace=default")
+
+	assert.NoError(t, authorizeWorkingRemoteAgent(request, certificate, "symphony-service"))
+
+	request.Request.SetRequestURI("https://localhost/v1alpha2/solutionversion/tasks?target=edge-02&namespace=default")
+	assert.Error(t, authorizeWorkingRemoteAgent(request, certificate, "symphony-service"))
+
+	request.Request.SetRequestURI("https://localhost/v1alpha2/users")
+	assert.Error(t, authorizeWorkingRemoteAgent(request, certificate, "symphony-service"))
+}
 
 func generateJWTToken(signingKey interface{}, method jwt.SigningMethod, userName string, expiresAt time.Time, issuedAt time.Time, notAfter time.Time, issuer string, subject string, audiences []string) (string, error) {
 	claims := TestCustomClaims{

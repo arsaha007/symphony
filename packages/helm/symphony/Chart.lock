@@ -5,5 +5,5 @@ dependencies:
 - name: zipkin
   repository: https://openzipkin.github.io/zipkin
   version: 0.7.0
-digest: sha256:41b29cef601c700f479aa80f396289f03171924af558b8d814df8dac205e4908
-generated: "2024-10-15T22:36:08.98822013+08:00"
+digest: sha256:2e549613fe98cc451f4541e25da207b36a5043e6ca6d597b97487fa945f217e4
+generated: "2026-08-27T16:42:54.9476508+05:30"

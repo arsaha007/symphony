@@ -132,6 +132,13 @@ jobs:
     - name: COA Test
       run: cd coa && mage cleanTest
 
+    - name: Remote Agent Test
+      run: |
+        cd remote-agent
+        go test -tags remote ./...
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags remote -o /tmp/remote-agent .
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags remote -o /tmp/remote-agent.exe .
+
     - name: Build Rust bindings
       run: |
         cd api/pkg/apis/v1alpha1/providers/target/rust

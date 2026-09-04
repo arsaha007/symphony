@@ -23,11 +23,13 @@ import (
 	memorykeylock "github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/keylock/memory"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/pubsub/memory"
 	mocksecret "github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/secret/mock"
+	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/states"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/states/memorystate"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/vendors"
 	coalogcontexts "github.com/eclipse-symphony/symphony/coa/pkg/logger/contexts"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -189,7 +191,55 @@ func TestSolutionVersionEndpoints(t *testing.T) {
 	vendor := createSolutionVersionVendor()
 	vendor.Route = "solutionversion"
 	endpoints := vendor.GetEndpoints()
-	assert.Equal(t, 3, len(endpoints))
+	assert.Len(t, endpoints, 7)
+	routes := make(map[string]bool, len(endpoints))
+	for _, endpoint := range endpoints {
+		routes[endpoint.Route] = true
+	}
+	assert.True(t, routes["solutionversion/tasks"])
+	assert.True(t, routes["solutionversion/task/getResult"])
+	assert.True(t, routes["solution/tasks"])
+	assert.True(t, routes["solution/task/getResult"])
+}
+
+func TestRemoteTaskEndpointIncludesTrackedOperationID(t *testing.T) {
+	vendor := createSolutionVersionVendor()
+	operation := model.RemoteOperation{
+		OperationID: "operation-1",
+		Target:      "edge-01",
+		Namespace:   "default",
+		Request:     json.RawMessage(`{"provider":"script","action":"get"}`),
+		Status:      model.RemoteOperationQueued,
+		CreatedAt:   time.Now().UTC(),
+	}
+	_, err := vendor.SolutionVersionManager.StateProvider.Upsert(t.Context(), states.UpsertRequest{
+		Value: states.StateEntry{ID: operation.OperationID, Body: operation},
+		Metadata: map[string]interface{}{
+			"namespace": operation.Namespace,
+			"group":     model.SolutionVersionGroup,
+			"version":   "v1",
+			"resource":  "RemoteOperation",
+		},
+	})
+	require.NoError(t, err)
+
+	response := vendor.onGetRemoteTasks(v1alpha2.COARequest{
+		Method: fasthttp.MethodGet,
+		Parameters: map[string]string{
+			"target":    operation.Target,
+			"namespace": operation.Namespace,
+		},
+		Context: t.Context(),
+	})
+	require.Equal(t, v1alpha2.OK, response.State)
+
+	var page model.ProviderPagingRequest
+	require.NoError(t, json.Unmarshal(response.Body, &page))
+	require.Len(t, page.RequestList, 1)
+	require.Equal(t, operation.OperationID, page.RequestList[0][model.OperationIDField])
+	require.Equal(t, operation.OperationID, page.RequestList[0][model.LegacyOperationIDField])
+	correlationKey := coalogcontexts.ConstructHttpHeaderKeyForActivityLogContext(coalogcontexts.Activity_CorrelationId)
+	require.Equal(t, operation.OperationID, page.RequestList[0][correlationKey])
 }
 
 func TestSolutionVersionInfo(t *testing.T) {

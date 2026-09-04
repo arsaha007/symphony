@@ -20,6 +20,7 @@ import (
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/observability"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/registry"
+	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/secret"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/providers/states"
 	"github.com/eclipse-symphony/symphony/coa/pkg/apis/v1alpha2/utils"
 	"github.com/eclipse-symphony/symphony/coa/pkg/logger"
@@ -33,6 +34,7 @@ type TargetsManager struct {
 	managers.Manager
 	StateProvider    states.IStateProvider
 	RegistryProvider registry.IRegistryProvider
+	SecretProvider   secret.ISecretProvider
 	needValidate     bool
 	TargetValidator  validation.TargetValidator
 }
@@ -53,6 +55,12 @@ func (s *TargetsManager) Init(context *contexts.VendorContext, config managers.M
 		// Turn off validation of differnt types: https://github.com/eclipse-symphony/symphony/issues/445
 		// s.TargetValidator = validation.NewTargetValidator(s.targetInstanceLookup, s.targetUniqueNameLookup)
 		s.TargetValidator = validation.NewTargetValidator(nil, s.targetUniqueNameLookup)
+	}
+	for _, provider := range providers {
+		if secretProvider, ok := provider.(secret.ISecretProvider); ok {
+			s.SecretProvider = secretProvider
+			break
+		}
 	}
 	return nil
 }

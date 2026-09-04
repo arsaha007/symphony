@@ -1,0 +1,373 @@
+{
+  "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Resources/deployments/DeployNonK8sVM",
+  "location": null,
+  "name": "DeployNonK8sVM",
+  "properties": {
+    "correlationId": "7ccd211a-b3dd-4302-8276-9d0e5ae043a2",
+    "debugSetting": null,
+    "dependencies": [
+      {
+        "dependsOn": [
+          {
+            "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/networkSecurityGroups/EdgeConfig-VMSS-NSG",
+            "resourceGroup": "arijt",
+            "resourceName": "EdgeConfig-VMSS-NSG",
+            "resourceType": "Microsoft.Network/networkSecurityGroups"
+          },
+          {
+            "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/networkSecurityGroups/EdgeConfig-AKS-NSG",
+            "resourceGroup": "arijt",
+            "resourceName": "EdgeConfig-AKS-NSG",
+            "resourceType": "Microsoft.Network/networkSecurityGroups"
+          }
+        ],
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/virtualNetworks/EdgeConfig-VNet",
+        "resourceGroup": "arijt",
+        "resourceName": "EdgeConfig-VNet",
+        "resourceType": "Microsoft.Network/virtualNetworks"
+      },
+      {
+        "dependsOn": [
+          {
+            "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/publicIPAddresses/EdgeConfig-VMSS-PIP",
+            "resourceGroup": "arijt",
+            "resourceName": "EdgeConfig-VMSS-PIP",
+            "resourceType": "Microsoft.Network/publicIPAddresses"
+          }
+        ],
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/loadBalancers/EdgeConfig-LB",
+        "resourceGroup": "arijt",
+        "resourceName": "EdgeConfig-LB",
+        "resourceType": "Microsoft.Network/loadBalancers"
+      },
+      {
+        "dependsOn": [
+          {
+            "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/virtualNetworks/EdgeConfig-VNet",
+            "resourceGroup": "arijt",
+            "resourceName": "EdgeConfig-VNet",
+            "resourceType": "Microsoft.Network/virtualNetworks"
+          },
+          {
+            "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/loadBalancers/EdgeConfig-LB",
+            "resourceGroup": "arijt",
+            "resourceName": "EdgeConfig-LB",
+            "resourceType": "Microsoft.Network/loadBalancers"
+          }
+        ],
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Compute/virtualMachineScaleSets/EdgeConfig-VMSS",
+        "resourceGroup": "arijt",
+        "resourceName": "EdgeConfig-VMSS",
+        "resourceType": "Microsoft.Compute/virtualMachineScaleSets"
+      },
+      {
+        "dependsOn": [
+          {
+            "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.ManagedIdentity/userAssignedIdentities/EdgeConfig-Identity",
+            "resourceGroup": "arijt",
+            "resourceName": "EdgeConfig-Identity",
+            "resourceType": "Microsoft.ManagedIdentity/userAssignedIdentities"
+          }
+        ],
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Authorization/roleAssignments/6ed4b4bc-2756-56ae-a560-7d7300972eb6",
+        "resourceGroup": "arijt",
+        "resourceName": "6ed4b4bc-2756-56ae-a560-7d7300972eb6",
+        "resourceType": "Microsoft.Authorization/roleAssignments"
+      }
+    ],
+    "diagnostics": null,
+    "duration": "PT20.4246169S",
+    "error": null,
+    "extensions": [],
+    "mode": "Incremental",
+    "onErrorDeployment": null,
+    "outputResources": [
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Authorization/roleAssignments/6ed4b4bc-2756-56ae-a560-7d7300972eb6",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Authorization/roleAssignments"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Compute/virtualMachineScaleSets/EdgeConfig-VMSS",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Compute/virtualMachineScaleSets"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.ManagedIdentity/userAssignedIdentities/EdgeConfig-Identity",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.ManagedIdentity/userAssignedIdentities"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/loadBalancers/EdgeConfig-LB",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Network/loadBalancers"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/networkSecurityGroups/EdgeConfig-AKS-NSG",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Network/networkSecurityGroups"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/networkSecurityGroups/EdgeConfig-VMSS-NSG",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Network/networkSecurityGroups"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/publicIPAddresses/EdgeConfig-VMSS-PIP",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Network/publicIPAddresses"
+      },
+      {
+        "apiVersion": null,
+        "extension": null,
+        "id": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/virtualNetworks/EdgeConfig-VNet",
+        "identifiers": null,
+        "resourceGroup": "arijt",
+        "resourceType": "Microsoft.Network/virtualNetworks"
+      }
+    ],
+    "outputs": {
+      "managedIdentityClientId": {
+        "type": "String",
+        "value": "3ed27d21-5b53-4960-a424-0fc72d2eedce"
+      },
+      "managedIdentityId": {
+        "type": "String",
+        "value": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.ManagedIdentity/userAssignedIdentities/EdgeConfig-Identity"
+      },
+      "vmssFQDN": {
+        "type": "String",
+        "value": "edgeconfig-vmss-4rkxux3gwywqa.swedencentral.cloudapp.azure.com"
+      },
+      "vmssId": {
+        "type": "String",
+        "value": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Compute/virtualMachineScaleSets/EdgeConfig-VMSS"
+      },
+      "vmssPublicIP": {
+        "type": "String",
+        "value": "4.223.157.146"
+      },
+      "vnetId": {
+        "type": "String",
+        "value": "/subscriptions/973d15c6-6c57-447e-b9c6-6d79b5b784ab/resourceGroups/arijt/providers/Microsoft.Network/virtualNetworks/EdgeConfig-VNet"
+      }
+    },
+    "parameters": {
+      "adminUsername": {
+        "type": "String",
+        "value": "azureuser"
+      },
+      "aksNodeCount": {
+        "type": "Int",
+        "value": 3
+      },
+      "aksNodeVmSize": {
+        "type": "String",
+        "value": "Standard_D2s_v3"
+      },
+      "aksSubnetAddressPrefix": {
+        "type": "String",
+        "value": "10.0.2.0/24"
+      },
+      "kubernetesVersion": {
+        "type": "String",
+        "value": "1.28.9"
+      },
+      "location": {
+        "type": "String",
+        "value": "Sweden Central"
+      },
+      "resourcePrefix": {
+        "type": "String",
+        "value": "EdgeConfig"
+      },
+      "sshPublicKey": {
+        "type": "String",
+        "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQChXCTIt1JVuAKp/wY4zzq3sIEgeoDLHRHMVGTl0RvvtLnajIHzUSy/utDBboxdF1PWYxTB0J8NJWgcWFo4fb3VI4hUHQMtE5axC90q8A+kzydtfb978EJ2APy7O43hWf4ODJHRVeKIEIYLcXLUViKNnec67a8pO6iB12CKHjbkrgysq87LN+TGnD36khs095MaC/p3qN4Qijnyg76+Mdd7mfeCH46foD5WKAZqOyTHdkCZPkKtVeNekmGkX9b0Tcef90Ib2tY6a3fyag74sB+M0g2YTMV1+UegY7Pzf2cVgAnNYj3aIsZxeXYwn/VaL2XXU5Al1h71uJoBzB+fLzn/"
+      },
+      "vmssInstanceCount": {
+        "type": "Int",
+        "value": 3
+      },
+      "vmssSubnetAddressPrefix": {
+        "type": "String",
+        "value": "10.0.1.0/24"
+      },
+      "vmssVmSize": {
+        "type": "String",
+        "value": "Standard_D2s_v3"
+      },
+      "vnetAddressPrefix": {
+        "type": "String",
+        "value": "10.0.0.0/16"
+      }
+    },
+    "parametersLink": null,
+    "providers": [
+      {
+        "id": null,
+        "namespace": "Microsoft.ManagedIdentity",
+        "providerAuthorizationConsentState": null,
+        "registrationPolicy": null,
+        "registrationState": null,
+        "resourceTypes": [
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              "swedencentral"
+            ],
+            "properties": null,
+            "resourceType": "userAssignedIdentities",
+            "zoneMappings": null
+          }
+        ]
+      },
+      {
+        "id": null,
+        "namespace": "Microsoft.Network",
+        "providerAuthorizationConsentState": null,
+        "registrationPolicy": null,
+        "registrationState": null,
+        "resourceTypes": [
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              "swedencentral"
+            ],
+            "properties": null,
+            "resourceType": "networkSecurityGroups",
+            "zoneMappings": null
+          },
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              "swedencentral"
+            ],
+            "properties": null,
+            "resourceType": "virtualNetworks",
+            "zoneMappings": null
+          },
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              "swedencentral"
+            ],
+            "properties": null,
+            "resourceType": "publicIPAddresses",
+            "zoneMappings": null
+          },
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              "swedencentral"
+            ],
+            "properties": null,
+            "resourceType": "loadBalancers",
+            "zoneMappings": null
+          }
+        ]
+      },
+      {
+        "id": null,
+        "namespace": "Microsoft.Compute",
+        "providerAuthorizationConsentState": null,
+        "registrationPolicy": null,
+        "registrationState": null,
+        "resourceTypes": [
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              "swedencentral"
+            ],
+            "properties": null,
+            "resourceType": "virtualMachineScaleSets",
+            "zoneMappings": null
+          }
+        ]
+      },
+      {
+        "id": null,
+        "namespace": "Microsoft.Authorization",
+        "providerAuthorizationConsentState": null,
+        "registrationPolicy": null,
+        "registrationState": null,
+        "resourceTypes": [
+          {
+            "aliases": null,
+            "apiProfiles": null,
+            "apiVersions": null,
+            "capabilities": null,
+            "defaultApiVersion": null,
+            "locationMappings": null,
+            "locations": [
+              null
+            ],
+            "properties": null,
+            "resourceType": "roleAssignments",
+            "zoneMappings": null
+          }
+        ]
+      }
+    ],
+    "provisioningState": "Succeeded",
+    "templateHash": "16535524383204307905",
+    "templateLink": null,
+    "timestamp": "2026-09-01T05:53:29.207820+00:00",
+    "validatedResources": null,
+    "validationLevel": null
+  },
+  "resourceGroup": "arijt",
+  "tags": null,
+  "type": "Microsoft.Resources/deployments"
+}

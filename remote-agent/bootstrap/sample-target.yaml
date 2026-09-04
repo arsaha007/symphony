@@ -1,0 +1,18 @@
+apiVersion: fabric.symphony/v1
+kind: Target
+metadata:
+  name: edge-01
+  namespace: default
+spec:
+  displayName: edge-01
+  components:
+  - name: remote-agent
+    type: remote-agent
+    properties:
+      description: Remote provider host
+  topologies:
+  - bindings:
+    - provider: providers.target.script
+      role: script
+    - provider: providers.target.remote-agent
+      role: remote-agent

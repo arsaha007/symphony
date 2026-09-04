@@ -18,11 +18,12 @@ import (
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/jobs"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/models"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/reference"
+	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/remoteagent"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/secrets"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/sites"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/skills"
-	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/solutionversion"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/solutions"
+	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/solutionversion"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/solutionversions"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/stage"
 	"github.com/eclipse-symphony/symphony/api/pkg/apis/v1alpha1/managers/staging"
@@ -95,6 +96,8 @@ func (c *SymphonyManagerFactory) CreateManager(config cm.ManagerConfig) (cm.IMan
 		manager = &solutionversion.SummaryCleanupManager{}
 	case "managers.symphony.resourcecount":
 		manager = &solutionversion.ResourceCountManager{}
+	case "managers.symphony.remoteagentscheduler":
+		manager = &remoteagent.RemoteAgentSchedulerManager{}
 	case "managers.symphony.sync":
 		manager = &sync.SyncManager{}
 	case "managers.symphony.models":

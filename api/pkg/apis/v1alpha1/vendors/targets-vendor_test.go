@@ -30,7 +30,14 @@ func TestTargetsEndpoints(t *testing.T) {
 	vendor := createTargetsVendor()
 	vendor.Route = "targets"
 	endpoints := vendor.GetEndpoints()
-	assert.Equal(t, 5, len(endpoints))
+	assert.Len(t, endpoints, 8)
+	routes := make(map[string]bool, len(endpoints))
+	for _, endpoint := range endpoints {
+		routes[endpoint.Route] = true
+	}
+	assert.True(t, routes["targets/getcert"])
+	assert.True(t, routes["targets/secretrotate"])
+	assert.True(t, routes["targets/updatetopology"])
 }
 
 func TestTargetsInfo(t *testing.T) {

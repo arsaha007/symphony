@@ -1,12 +1,12 @@
 fullnameOverride: symphony
 symphonyImage:
-  repository: ghcr.io/eclipse-symphony/symphony-k8s
+  repository: remoteagent.azurecr.io/eclipse-symphony/symphony-k8s
   pullPolicy: IfNotPresent
-  tag: "{VERSION}"
+  tag: "png"
 paiImage:
-  repository: ghcr.io/eclipse-symphony/symphony-api
+  repository: remoteagent.azurecr.io/eclipse-symphony/symphony-api
   pullPolicy: IfNotPresent
-  tag: "{VERSION}"
+  tag: "png"
 CUSTOM_VISION_KEY: "AAAA"
 installServiceExt: true
 global:
@@ -109,6 +109,22 @@ Azure:
 otlpLogsEndpointGrpc: 
 otlpMetricsEndpointGrpc: 
 otlpInsecureGrpc: true
+
+remoteAgent:
+  enabled: true
+  version: "{VERSION}"
+  subjects: "bootstrap-client"
+  operationTimeout: "10m"
+  leaseDuration: "2m"
+  completedRetention: "24h"
+  workingCertDuration: "2160h"
+  workingCertRenewBefore: "360h"
+  bootstrapCA:
+    secretName: ""
+    secretKey: "tls.crt"
+  bootstrapCertificate:
+    enabled: true
+    commonName: "bootstrap-client"
 
 mqtt:
   # whether to enable and deploy Mosquitto MQTT broker

@@ -1,0 +1,526 @@
+
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "ARM template to deploy VMSS and AKS cluster in the same VNet in Sweden Central"
+  },
+  "parameters": {
+    "resourcePrefix": {
+      "type": "string",
+      "defaultValue": "EdgeConfig",
+      "metadata": {
+        "description": "Prefix for all resource names"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "Sweden Central",
+      "metadata": {
+        "description": "Azure region for deployment"
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/16",
+      "metadata": {
+        "description": "Address prefix for the virtual network"
+      }
+    },
+    "vmssSubnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.1.0/24",
+      "metadata": {
+        "description": "Address prefix for the VMSS subnet"
+      }
+    },
+    "aksSubnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.2.0/24",
+      "metadata": {
+        "description": "Address prefix for the AKS subnet"
+      }
+    },
+    "vmssInstanceCount": {
+      "type": "int",
+      "defaultValue": 3,
+      "minValue": 1,
+      "maxValue": 100,
+      "metadata": {
+        "description": "Number of VM instances in the VMSS"
+      }
+    },
+    "vmssVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D2s_v3",
+      "metadata": {
+        "description": "Size of VMs in the VMSS (non-ARM SKU)"
+      }
+    },
+    "aksNodeCount": {
+      "type": "int",
+      "defaultValue": 2,
+      "minValue": 1,
+      "maxValue": 50,
+      "metadata": {
+        "description": "Number of nodes in the AKS cluster"
+      }
+    },
+    "aksNodeVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D2s_v3",
+      "metadata": {
+        "description": "VM size for AKS nodes (non-ARM SKU)"
+      }
+    },
+    "kubernetesVersion": {
+      "type": "string",
+      "defaultValue": "1.35.7",
+      "metadata": {
+        "description": "Kubernetes version for the AKS cluster"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "azureuser",
+      "metadata": {
+        "description": "Admin username for the VMs"
+      }
+    },
+    "sshPublicKey": {
+      "type": "string",
+      "metadata": {
+        "description": "SSH public key for VM authentication"
+      }
+    }
+  },
+  "variables": {
+    "vnetName": "[concat(parameters('resourcePrefix'), '-VNet')]",
+    "vmssSubnetName": "[concat(parameters('resourcePrefix'), '-VMSS-Subnet')]",
+    "aksSubnetName": "[concat(parameters('resourcePrefix'), '-AKS-Subnet')]",
+    "vmssName": "[concat(parameters('resourcePrefix'), '-VMSS')]",
+    "aksClusterName": "[concat(parameters('resourcePrefix'), '-AKS')]",
+    "identityName": "[concat(parameters('resourcePrefix'), '-Identity')]",
+    "vmssNsgName": "[concat(parameters('resourcePrefix'), '-VMSS-NSG')]",
+    "aksNsgName": "[concat(parameters('resourcePrefix'), '-AKS-NSG')]",
+    "vmssPublicIpName": "[concat(parameters('resourcePrefix'), '-VMSS-PIP')]",
+    "loadBalancerName": "[concat(parameters('resourcePrefix'), '-LB')]",
+    "aksServicePrincipalProfile": {
+      "clientId": "msi"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('identityName')]",
+      "location": "[parameters('location')]",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('vmssNsgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowSSH",
+            "properties": {
+              "protocol": "TCP",
+              "sourcePortRange": "*",
+              "destinationPortRange": "22",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 1001,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "AllowHTTP",
+            "properties": {
+              "protocol": "TCP",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 1002,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "AllowHTTPS",
+            "properties": {
+              "protocol": "TCP",
+              "sourcePortRange": "*",
+              "destinationPortRange": "443",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 1003,
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('aksNsgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowKubernetesAPI",
+            "properties": {
+              "protocol": "TCP",
+              "sourcePortRange": "*",
+              "destinationPortRange": "443",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 1001,
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('vnetName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('vmssNsgName'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('aksNsgName'))]"
+      ],
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('vnetAddressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('vmssSubnetName')]",
+            "properties": {
+              "addressPrefix": "[parameters('vmssSubnetAddressPrefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('vmssNsgName'))]"
+              }
+            }
+          },
+          {
+            "name": "[variables('aksSubnetName')]",
+            "properties": {
+              "addressPrefix": "[parameters('aksSubnetAddressPrefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('aksNsgName'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('vmssPublicIpName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "[toLower(concat(parameters('resourcePrefix'), '-vmss-', uniqueString(resourceGroup().id)))]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/loadBalancers",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('loadBalancerName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('vmssPublicIpName'))]"
+      ],
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "frontendIPConfigurations": [
+          {
+            "name": "LoadBalancerFrontEnd",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('vmssPublicIpName'))]"
+              }
+            }
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "LoadBalancerBackEndPool"
+          }
+        ],
+        "loadBalancingRules": [
+          {
+            "name": "HTTPRule",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/frontendIPConfigurations/LoadBalancerFrontEnd')]"
+              },
+              "backendAddressPool": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/backendAddressPools/LoadBalancerBackEndPool')]"
+              },
+              "probe": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/probes/HTTPProbe')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 80,
+              "backendPort": 80,
+              "idleTimeoutInMinutes": 15
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "HTTPProbe",
+            "properties": {
+              "protocol": "Http",
+              "port": 80,
+              "requestPath": "/",
+              "intervalInSeconds": 15,
+              "numberOfProbes": 3
+            }
+          }
+        ],
+        "inboundNatPools": [
+          {
+            "name": "SSHNatPool",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/frontendIPConfigurations/LoadBalancerFrontEnd')]"
+              },
+              "protocol": "Tcp",
+              "frontendPortRangeStart": 50000,
+              "frontendPortRangeEnd": 50099,
+              "backendPort": 22
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachineScaleSets",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('vmssName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName'))]"
+      ],
+      "sku": {
+        "name": "[parameters('vmssVmSize')]",
+        "tier": "Standard",
+        "capacity": "[parameters('vmssInstanceCount')]"
+      },
+      "properties": {
+        "upgradePolicy": {
+          "mode": "Manual",
+          "automaticOSUpgradePolicy": {
+            "enableAutomaticOSUpgrade": true,
+            "disableAutomaticRollback": false
+          }
+        },
+        "virtualMachineProfile": {
+          "storageProfile": {
+            "osDisk": {
+              "caching": "ReadWrite",
+              "createOption": "FromImage",
+              "managedDisk": {
+                "storageAccountType": "Premium_LRS"
+              }
+            },
+            "imageReference": {
+              "publisher": "Canonical",
+              "offer": "0001-com-ubuntu-server-jammy",
+              "sku": "22_04-lts-gen2",
+              "version": "latest"
+            }
+          },
+          "osProfile": {
+            "computerNamePrefix": "[parameters('resourcePrefix')]",
+            "adminUsername": "[parameters('adminUsername')]",
+            "linuxConfiguration": {
+              "disablePasswordAuthentication": true,
+              "ssh": {
+                "publicKeys": [
+                  {
+                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                    "keyData": "[parameters('sshPublicKey')]"
+                  }
+                ]
+              }
+            }
+          },
+          "networkProfile": {
+            "healthProbe": {
+              "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/probes/HTTPProbe')]"
+            },
+            "networkInterfaceConfigurations": [
+              {
+                "name": "VMSSNetworkInterface",
+                "properties": {
+                  "primary": true,
+                  "ipConfigurations": [
+                    {
+                      "name": "VMSSIPConfig",
+                      "properties": {
+                        "subnet": {
+                          "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), '/subnets/', variables('vmssSubnetName'))]"
+                        },
+                        "loadBalancerBackendAddressPools": [
+                          {
+                            "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/backendAddressPools/LoadBalancerBackEndPool')]"
+                          }
+                        ],
+                        "loadBalancerInboundNatPools": [
+                          {
+                            "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/inboundNatPools/SSHNatPool')]"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(concat(resourceGroup().id, variables('identityName'), 'Contributor'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))).principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.ContainerService/managedClusters",
+      "apiVersion": "2023-10-01",
+      "name": "[variables('aksClusterName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))]",
+        "[resourceId('Microsoft.Authorization/roleAssignments', guid(concat(resourceGroup().id, variables('identityName'), 'Contributor')))]"
+      ],
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))]": {}
+        }
+      },
+      "properties": {
+        "kubernetesVersion": "[parameters('kubernetesVersion')]",
+        "dnsPrefix": "[toLower(concat(parameters('resourcePrefix'), '-aks-', uniqueString(resourceGroup().id)))]",
+        "agentPoolProfiles": [
+          {
+            "name": "nodepool1",
+            "count": "[parameters('aksNodeCount')]",
+            "vmSize": "[parameters('aksNodeVmSize')]",
+            "osType": "Linux",
+            "osSKU": "AzureLinux",
+            "mode": "System",
+            "vnetSubnetID": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), '/subnets/', variables('aksSubnetName'))]",
+            "enableAutoScaling": false,
+            "type": "VirtualMachineScaleSets",
+            "availabilityZones": [
+              "1",
+              "2",
+              "3"
+            ]
+          }
+        ],
+        "servicePrincipalProfile": "[variables('aksServicePrincipalProfile')]",
+        "networkProfile": {
+          "networkPlugin": "azure",
+          "serviceCidr": "10.1.0.0/16",
+          "dnsServiceIP": "10.1.0.10",
+          "dockerBridgeCidr": "172.17.0.1/16"
+        },
+        "apiServerAccessProfile": {
+          "enablePrivateCluster": false
+        },
+        "addonProfiles": {
+          "azureKeyvaultSecretsProvider": {
+            "enabled": false
+          },
+          "azurepolicy": {
+            "enabled": false
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "vnetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+      "metadata": {
+        "description": "Resource ID of the Virtual Network"
+      }
+    },
+    "vmssId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('vmssName'))]",
+      "metadata": {
+        "description": "Resource ID of the Virtual Machine Scale Set"
+      }
+    },
+    "managedIdentityId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))]",
+      "metadata": {
+        "description": "Resource ID of the User Assigned Managed Identity"
+      }
+    },
+    "managedIdentityClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))).clientId]",
+      "metadata": {
+        "description": "Client ID of the User Assigned Managed Identity"
+      }
+    },
+    "vmssPublicIP": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('vmssPublicIpName'))).ipAddress]",
+      "metadata": {
+        "description": "Public IP address of the VMSS load balancer"
+      }
+    },
+    "vmssFQDN": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('vmssPublicIpName'))).dnsSettings.fqdn]",
+      "metadata": {
+        "description": "FQDN of the VMSS load balancer"
+      }
+    }
+  }
+}
+
+
+

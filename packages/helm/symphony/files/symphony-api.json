@@ -236,7 +236,30 @@
                 }
               }
             }
+          }{{- if .Values.remoteAgent.enabled }},
+          {
+            "name": "remoteagent-scheduler-manager",
+            "type": "managers.symphony.remoteagentscheduler",
+            "properties": {
+              "providers.persistentstate": "k8s-state",
+              "singleton": "true"
+            },
+            "providers": {
+              "k8s-state": {
+                "type": "providers.state.k8s",
+                "config": {
+                  "inCluster": true
+                }
+              },
+              "secret": {
+                "type": "providers.secret.k8s",
+                "config": {
+                  "inCluster": true
+                }
+              }
+            }
           }
+          {{- end }}
         ]
       },
       {
@@ -328,6 +351,10 @@
       {
         "type": "vendors.targets",
         "route": "targets",
+        "properties": {
+          "workingCertDuration": "{{ .Values.remoteAgent.workingCertDuration }}",
+          "workingCertRenewBefore": "{{ .Values.remoteAgent.workingCertRenewBefore }}"
+        },
         "managers": [
           {
             "name": "targets-manager",
@@ -341,7 +368,14 @@
                 "config": {
                   "inCluster": true
                 }
+              }{{- if .Values.remoteAgent.enabled }},
+              "secret": {
+                "type": "providers.secret.k8s",
+                "config": {
+                  "inCluster": true
+                }
               }
+              {{- end }}
             }
           }
         ]
@@ -523,7 +557,10 @@
               "providers.persistentstate": "redis-state",
               "providers.config": "mock-config",  
               "providers.secret": "mock-secret",
-              "providers.keylock": "mem-keylock"
+              "providers.keylock": "mem-keylock",
+              "remoteAgent.operationTimeout": "{{ .Values.remoteAgent.operationTimeout }}",
+              "remoteAgent.leaseDuration": "{{ .Values.remoteAgent.leaseDuration }}",
+              "remoteAgent.completedRetention": "{{ .Values.remoteAgent.completedRetention }}"
             },
             "providers": {
               "redis-state": {
@@ -850,6 +887,10 @@
       "config": {
           "port": {{ include "symphony.apiContainerPortHttps" . }},
           "tls": true,
+          {{- if .Values.remoteAgent.enabled }}
+          "clientCAFile": "/etc/symphony-api/remote-agent-ca/ca.crt",
+          "bootstrapClientCAFile": "/etc/symphony-api/remote-agent-bootstrap-ca/ca.crt",
+          {{- end }}
           "certProvider": {
             "type": "certs.localfile",
             "config": {
@@ -895,6 +936,17 @@
             }
           ]
       }
+    }{{- if and .Values.remoteAgent.enabled .Values.mqtt.enabled }},
+    {
+      "type": "bindings.mqtt",
+      "config": {
+        "brokerAddress": "tcp://{{ include "symphony.fullname" . }}-mqtt:{{ .Values.mqtt.port }}",
+        "clientID": "symphony-api",
+        "requestTopic": "symphony/request/+",
+        "responseTopic": "symphony/response/unused",
+        "useTLS": "false"
+      }
     }
+    {{- end }}
   ]
 }

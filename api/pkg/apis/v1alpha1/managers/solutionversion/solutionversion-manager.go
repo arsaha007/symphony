@@ -308,7 +308,7 @@ func (s *SolutionVersionManager) Reconcile(ctx context.Context, deployment model
 		log.ErrorfCtx(ctx, " M (SolutionVersion): failed to create target manager state from deployment spec: %+v", err)
 		return summary, err
 	}
-	currentState, _, err = s.Get(ctx, deployment, targetName)
+	currentState, _, err = s.getWithNamespace(ctx, deployment, targetName, namespace)
 	if err != nil {
 		summary.SummaryMessage = "failed to get current state: " + err.Error()
 		log.ErrorfCtx(ctx, " M (SolutionVersion): failed to get current state: %+v", err)
@@ -369,6 +369,7 @@ func (s *SolutionVersionManager) Reconcile(ctx context.Context, deployment model
 		}
 
 		plannedCount++
+		remoteTarget := stepTargetIsRemoteTarget(deployment, step.Target)
 
 		dep.ActiveTarget = step.Target
 		agent := findAgentFromDeploymentState(mergedState, step.Target)
@@ -377,29 +378,31 @@ func (s *SolutionVersionManager) Reconcile(ctx context.Context, deployment model
 		} else {
 			delete(col, ENV_NAME)
 		}
-		var override tgt.ITargetProvider
-		role := step.Role
-		if role == "container" {
-			role = "instance"
-		}
-		if v, ok := s.TargetProviders[role]; ok {
-			override = v
-		}
 		var provider providers.IProvider
-		if override == nil {
-			targetSpec := s.getTargetStateForStep(step, deployment, previousDesiredState)
-			provider, err = sp.CreateProviderForTargetRole(s.Context, step.Role, targetSpec, override)
-			if err != nil {
-				summary.SummaryMessage = "failed to create provider:" + err.Error()
-				log.ErrorfCtx(ctx, " M (SolutionVersion): failed to create provider: %+v", err)
-				return summary, err
+		if !remoteTarget {
+			var override tgt.ITargetProvider
+			role := step.Role
+			if role == "container" {
+				role = "instance"
 			}
-		} else {
-			provider = override
+			if value, ok := s.TargetProviders[role]; ok {
+				override = value
+			}
+			if override == nil {
+				targetSpec := s.getTargetStateForStep(step, deployment, previousDesiredState)
+				provider, err = sp.CreateProviderForTargetRole(s.Context, step.Role, targetSpec, override)
+				if err != nil {
+					summary.SummaryMessage = "failed to create provider:" + err.Error()
+					log.ErrorfCtx(ctx, " M (SolutionVersion): failed to create provider: %+v", err)
+					return summary, err
+				}
+			} else {
+				provider = override
+			}
 		}
 		var stepError error
 		var componentResults = make(map[string]model.ComponentResultSpec)
-		if previousDesiredState != nil {
+		if previousDesiredState != nil && !remoteTarget {
 			testState := MergeDeploymentStates(&previousDesiredState.State, currentState)
 			if s.canSkipStep(ctx, step, step.Target, provider.(tgt.ITargetProvider), previousDesiredState.State.Components, testState) {
 				summary.UpdateTargetResult(step.Target, model.TargetResultSpec{Status: "OK", Message: "", ComponentResults: componentResults})
@@ -443,7 +446,12 @@ func (s *SolutionVersionManager) Reconcile(ctx context.Context, deployment model
 		}()
 		for i := 0; i < retryCount; i++ {
 			deployment.Instance.Spec.Scope = getCurrentApplicationScope(ctx, deployment.Instance, deployment.Targets[step.Target])
-			componentResults, stepError = (provider.(tgt.ITargetProvider)).Apply(ctx, dep, step, deployment.IsDryRun)
+			dep.Instance.Spec.Scope = deployment.Instance.Spec.Scope
+			if remoteTarget {
+				componentResults, stepError = s.executeRemoteApply(ctx, dep, step, namespace)
+			} else {
+				componentResults, stepError = (provider.(tgt.ITargetProvider)).Apply(ctx, dep, step, deployment.IsDryRun)
+			}
 			if stepError == nil {
 				targetResult[step.Target] = 1
 				summary.AllAssignedDeployed = plannedCount == planSuccessCount
@@ -594,6 +602,10 @@ func (s *SolutionVersionManager) canSkipStep(ctx context.Context, step model.Dep
 	return true
 }
 func (s *SolutionVersionManager) Get(ctx context.Context, deployment model.DeploymentSpec, targetName string) (model.DeploymentState, []model.ComponentSpec, error) {
+	return s.getWithNamespace(ctx, deployment, targetName, deploymentNamespace(deployment))
+}
+
+func (s *SolutionVersionManager) getWithNamespace(ctx context.Context, deployment model.DeploymentSpec, targetName string, namespace string) (model.DeploymentState, []model.ComponentSpec, error) {
 	ctx, span := observability.StartSpan("SolutionVersion Manager", ctx, &map[string]string{
 		"method": "Get",
 	})
@@ -634,28 +646,32 @@ func (s *SolutionVersionManager) Get(ctx context.Context, deployment model.Deplo
 
 		deployment.ActiveTarget = step.Target
 		deployment.Instance.Spec.Scope = getCurrentApplicationScope(ctx, deployment.Instance, deployment.Targets[step.Target])
+		remoteTarget := stepTargetIsRemoteTarget(deployment, step.Target)
 
-		var override tgt.ITargetProvider
-		role := step.Role
-		if role == "container" {
-			role = "instance"
-		}
-		if v, ok := s.TargetProviders[role]; ok {
-			override = v
-		}
-		var provider providers.IProvider
-
-		if override == nil {
-			provider, err = sp.CreateProviderForTargetRole(s.Context, step.Role, deployment.Targets[step.Target], override)
-			if err != nil {
-				log.ErrorfCtx(ctx, " M (SolutionVersion): failed to create provider: %+v", err)
-				return ret, nil, err
-			}
-		} else {
-			provider = override
-		}
 		var components []model.ComponentSpec
-		components, err = (provider.(tgt.ITargetProvider)).Get(ctx, deployment, step.Components)
+		if remoteTarget {
+			components, err = s.executeRemoteGet(ctx, deployment, step, namespace)
+		} else {
+			var override tgt.ITargetProvider
+			role := step.Role
+			if role == "container" {
+				role = "instance"
+			}
+			if value, ok := s.TargetProviders[role]; ok {
+				override = value
+			}
+			var provider providers.IProvider
+			if override == nil {
+				provider, err = sp.CreateProviderForTargetRole(s.Context, step.Role, deployment.Targets[step.Target], override)
+				if err != nil {
+					log.ErrorfCtx(ctx, " M (SolutionVersion): failed to create provider: %+v", err)
+					return ret, nil, err
+				}
+			} else {
+				provider = override
+			}
+			components, err = (provider.(tgt.ITargetProvider)).Get(ctx, deployment, step.Components)
+		}
 
 		if err != nil {
 			log.WarnfCtx(ctx, " M (SolutionVersion): failed to get components: %+v", err)

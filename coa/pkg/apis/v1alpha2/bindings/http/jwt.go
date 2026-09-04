@@ -8,6 +8,8 @@ package http
 
 import (
 	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"os"
@@ -91,8 +93,13 @@ func (j JWT) JWT(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		}
 		tokenStr := j.readAuthHeader(ctx)
 		if tokenStr == "" {
-			log.Errorf("JWT: Token is empty.\n")
-			ctx.Response.SetStatusCode(fasthttp.StatusUnauthorized)
+			if err := authorizeClientCertificate(ctx); err != nil {
+				log.Errorf("JWT: client certificate authentication failed: %s", err.Error())
+				ctx.Response.SetStatusCode(fasthttp.StatusUnauthorized)
+				return
+			}
+			next(ctx)
+			return
 		} else {
 			issuer, err := decodeJWTTokenForIssuer(tokenStr)
 			if err != nil {
@@ -152,6 +159,108 @@ func (j JWT) JWT(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		}
 	}
 }
+
+func authorizeClientCertificate(ctx *fasthttp.RequestCtx) error {
+	connection, ok := ctx.Conn().(*tls.Conn)
+	if !ok {
+		return errors.New("bearer token or TLS client certificate is required")
+	}
+	state := connection.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		return errors.New("TLS client certificate is required")
+	}
+	certificate := state.PeerCertificates[0]
+	intermediates := x509.NewCertPool()
+	for _, intermediate := range state.PeerCertificates[1:] {
+		intermediates.AddCert(intermediate)
+	}
+	workingCAPath := os.Getenv("CLIENT_CA_FILE")
+	bootstrapCAPath := os.Getenv("CLIENT_BOOTSTRAP_CA_FILE")
+	if bootstrapCAPath == "" {
+		bootstrapCAPath = workingCAPath
+	}
+	if workingCAPath != "" {
+		if err := verifyClientCertificate(certificate, intermediates, workingCAPath); err == nil {
+			serviceName := os.Getenv("SYMPHONY_SERVICE_NAME")
+			if serviceName != "" && strings.Contains(certificate.Subject.String(), serviceName) {
+				return authorizeWorkingRemoteAgent(ctx, certificate, serviceName)
+			}
+		}
+	}
+	if bootstrapCAPath == "" {
+		return errors.New("client certificate trust is not configured")
+	}
+	if err := verifyClientCertificate(certificate, intermediates, bootstrapCAPath); err != nil {
+		return err
+	}
+	if !clientSubjectAllowed(certificate) {
+		return fmt.Errorf("client certificate subject %q is not allowed", certificate.Subject.String())
+	}
+	path := string(ctx.Path())
+	if strings.Contains(path, "/targets/getcert") || strings.Contains(path, "/files/") {
+		return nil
+	}
+	return errors.New("bootstrap certificate may access only getcert and files endpoints")
+}
+
+func authorizeWorkingRemoteAgent(ctx *fasthttp.RequestCtx, certificate *x509.Certificate, serviceName string) error {
+	path := string(ctx.Path())
+	if strings.Contains(path, "/files/") {
+		return nil
+	}
+	allowed := strings.Contains(path, "/solutionversion/tasks") ||
+		strings.Contains(path, "/solutionversion/task/getResult") ||
+		strings.Contains(path, "/solution/tasks") ||
+		strings.Contains(path, "/solution/task/getResult") ||
+		strings.Contains(path, "/targets/updatetopology/") ||
+		strings.Contains(path, "/targets/secretrotate/")
+	if !allowed {
+		return errors.New("working remote-agent certificate is not authorized for this endpoint")
+	}
+	target := string(ctx.QueryArgs().Peek("target"))
+	if target == "" {
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) > 0 {
+			target = parts[len(parts)-1]
+		}
+	}
+	namespace := string(ctx.QueryArgs().Peek("namespace"))
+	if namespace == "" {
+		namespace = "default"
+	}
+	expectedCommonName := fmt.Sprintf("%s-%s.%s", namespace, target, serviceName)
+	if target == "" || certificate.Subject.CommonName != expectedCommonName {
+		return fmt.Errorf("client certificate is not authorized for target %q", target)
+	}
+	return nil
+}
+
+func verifyClientCertificate(certificate *x509.Certificate, intermediates *x509.CertPool, caPath string) error {
+	data, err := os.ReadFile(caPath)
+	if err != nil {
+		return err
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(data) {
+		return fmt.Errorf("failed to parse client CA file %s", caPath)
+	}
+	_, err = certificate.Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}})
+	return err
+}
+
+func clientSubjectAllowed(certificate *x509.Certificate) bool {
+	configured := strings.Split(os.Getenv("CLIENT_SUBJECTS"), ";")
+	for _, candidate := range configured {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if candidate == certificate.Subject.CommonName || candidate == certificate.Subject.String() || strings.Contains(certificate.Subject.String(), candidate) {
+			return true
+		}
+	}
+	return false
+}
 func (j JWT) readAuthHeader(ctx *fasthttp.RequestCtx) string {
 	v := ctx.Request.Header.Peek(j.AuthHeader)
 	if v != nil {
@@ -197,14 +306,14 @@ func (j *JWT) validateToken(tokenStr string) (map[string]interface{}, []string, 
 	for k, v := range claims {
 		ret[k] = v
 	}
-	if j.MustHave != nil && len(j.MustHave) > 0 {
+	if len(j.MustHave) > 0 {
 		for _, k := range j.MustHave {
 			if _, ok := ret[k]; !ok {
 				return ret, nil, fmt.Errorf("required claim '%s' is not found", k)
 			}
 		}
 	}
-	if j.MustMatch != nil && len(j.MustMatch) > 0 {
+	if len(j.MustMatch) > 0 {
 		for k, v := range j.MustMatch {
 			if hv, ok := ret[k]; ok {
 				if hv != v {

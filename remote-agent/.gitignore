@@ -1,0 +1,9 @@
+/remote-agent
+/remote-agent.exe
+/config.json
+/*.pem
+/*.crt
+/*.key
+/*.log
+/*.new
+/*.previous

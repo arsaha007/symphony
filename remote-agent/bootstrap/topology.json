@@ -1,0 +1,20 @@
+{
+  "bindings": [
+    {
+      "provider": "providers.target.script",
+      "role": "script"
+    },
+    {
+      "provider": "providers.target.remote-agent",
+      "role": "remote-agent"
+    },
+    {
+      "provider": "providers.target.http",
+      "role": "http"
+    },
+    {
+      "provider": "providers.target.docker",
+      "role": "docker"
+    }
+  ]
+}

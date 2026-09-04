@@ -20,3 +20,12 @@ data:
   EXTENSION_RESOURCEID: {{ .Values.Azure.Extension.ResourceId }}
   EMIT_TIME_FIELD_IN_USER_LOGS: {{ include "symphony.emitTimeFieldInUserLogs" . }}
   LABEL_LENGTH_UPPER_LIMIT: "64"
+{{- if .Values.remoteAgent.enabled }}
+  AGENT_VERSION: {{ .Values.remoteAgent.version | quote }}
+  AGENT_PATH: "/v1alpha2/files"
+  CLIENT_CA_FILE: "/etc/symphony-api/remote-agent-ca/ca.crt"
+  CLIENT_BOOTSTRAP_CA_FILE: "/etc/symphony-api/remote-agent-bootstrap-ca/ca.crt"
+  CLIENT_SUBJECTS: {{ .Values.remoteAgent.subjects | quote }}
+  ISSUER_NAME: {{ printf "%s-remote-agent-issuer" (include "symphony.fullname" .) | quote }}
+  SYMPHONY_SERVICE_NAME: {{ include "symphony.serviceName" . | quote }}
+{{- end }}
